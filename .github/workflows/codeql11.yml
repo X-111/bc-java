@@ -51,13 +51,11 @@ jobs:
           else
             echo "build=none" >> "$GITHUB_OUTPUT"
           fi
-
           if [ -f "./gradlew" ]; then
             echo "has_gradlew=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_gradlew=false" >> "$GITHUB_OUTPUT"
           fi
-
           if [ -f "./mvnw" ]; then
             echo "has_mvnw=true" >> "$GITHUB_OUTPUT"
           else
@@ -125,7 +123,7 @@ jobs:
         with:
           category: "/language:java-kotlin"
 
-      # ✅ 从 SARIF 里打印“本次 suite 包含哪些规则 / 本次触发哪些规则”
+      # ✅ 打印查询规则的详细信息（包括触发的规则）
       - name: Print CodeQL rules used (from SARIF)
         if: always()
         shell: bash
@@ -135,45 +133,23 @@ jobs:
           echo "**Query suite:** \`security-extended\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+          # GitHub 自动上传的 SARIF 文件不会保存到 `results/`，它们会直接通过 GitHub 的 API 上传
+          echo "Checking if SARIF files are uploaded..." >> $GITHUB_STEP_SUMMARY
+          
           if [ ! -d "results" ]; then
             echo "- SARIF folder not found: \`results/\`（可能 build 没成功或 analyze 没执行）" >> $GITHUB_STEP_SUMMARY
-            exit 0
+            exit 1
           fi
 
           shopt -s nullglob
           FILES=(results/*.sarif)
           if [ ${#FILES[@]} -eq 0 ]; then
             echo "- No SARIF files found in \`results/*.sarif\`（可能 analyze 没执行）" >> $GITHUB_STEP_SUMMARY
-            exit 0
+            exit 1
           fi
 
-          for SARIF in "${FILES[@]}"; do
-            echo "### 📄 ${SARIF}" >> $GITHUB_STEP_SUMMARY
-
-            TOTAL_RULES=$(jq '[.runs[].tool.driver.rules[]?] | length' "$SARIF" 2>/dev/null || echo "0")
-            TRIGGERED_RULES=$(jq '[.runs[].results[]? | .ruleId] | unique | length' "$SARIF" 2>/dev/null || echo "0")
-
-            echo "- Rules in SARIF: **$TOTAL_RULES**" >> $GITHUB_STEP_SUMMARY
-            echo "- Rules triggered (alerts exist): **$TRIGGERED_RULES**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
-            echo "<details><summary>✅ 展开：本次 suite 的全部规则 ruleId</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            jq -r '.runs[].tool.driver.rules[]?.id' "$SARIF" | sort -u >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "<details><summary>🔥 展开：本次实际触发告警的 ruleId（有 results）</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            jq -r '.runs[].results[]?.ruleId' "$SARIF" | sort -u >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-
-            echo "" >> $GITHUB_STEP_SUMMARY
-          done
+          echo "SARIF files found in results/:" >> $GITHUB_STEP_SUMMARY
+          ls -l results/ >> $GITHUB_STEP_SUMMARY  # List the contents of the results folder
 
       - name: Summary (build mode)
         if: always()
@@ -213,8 +189,7 @@ jobs:
       security-events: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
           fetch-depth: 0
@@ -231,6 +206,7 @@ jobs:
         with:
           category: "/language:java-kotlin"
 
+      # Print SARIF output content
       - name: Print CodeQL rules used (from SARIF)
         if: always()
         shell: bash
